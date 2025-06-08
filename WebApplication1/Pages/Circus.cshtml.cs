@@ -6,19 +6,34 @@ using Microsoft.Extensions.Logging;
 using WebApplication1.Data;
 using Microsoft.EntityFrameworkCore;
 
+/// <summary>
+/// Модель страницы для отображения цирковых мероприятий
+/// </summary>
 public class CircusModel : PageModel
 {
     private readonly ILogger<CircusModel> _logger;
     private readonly AppDbContext _context;
 
+    /// <summary>
+    /// Конструктор модели страницы
+    /// </summary>
+    /// <param name="logger">Логгер для записи событий</param>
+    /// <param name="context">Контекст базы данных</param>
     public CircusModel(ILogger<CircusModel> logger, AppDbContext context)
     {
         _logger = logger;
         _context = context;
     }
 
+    /// <summary>
+    /// Список цирковых мероприятий
+    /// </summary>
     public List<Events> CircusEvents { get; set; }
 
+    /// <summary>
+    /// Обработчик GET-запроса для страницы
+    /// </summary>
+    /// <returns>Задача, представляющая асинхронную операцию</returns>
     public async Task OnGetAsync()
     {
         // Получаем идентификатор категории "цирк"
@@ -37,6 +52,3 @@ public class CircusModel : PageModel
             .ToListAsync();
     }
 }
-
-
-

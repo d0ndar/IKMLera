@@ -1,19 +1,33 @@
 using Microsoft.EntityFrameworkCore;
 using WebApplication1.Data;
 
+/// <summary>
+/// Главный класс приложения, содержащий точку входа и конфигурацию сервисов.
+/// </summary>
 public class Program
 {
+    /// <summary>
+    /// Точка входа в приложение.
+    /// </summary>
+    /// <param name="args">Аргументы командной строки.</param>
+    /// <remarks>
+    /// Настраивает и запускает веб-приложение с использованием:
+    /// - Razor Pages
+    /// - Сессий с 20-минутным таймаутом
+    /// - PostgreSQL базы данных
+    /// - Кэша в памяти
+    /// - Статических файлов
+    /// </remarks>
     public static void Main(string[] args)
     {
         var builder = WebApplication.CreateBuilder(args);
 
-        // Добавляем сервисы для аутентификации
+        // Конфигурация сервисов
         builder.Services.AddRazorPages();
-        builder.Services.AddSession(); // Добавляем поддержку сессий
-                                       //регистрация контекста
+        builder.Services.AddSession();
         builder.Services.AddHttpContextAccessor();
-        //регистрация IHttpContextAccessor
         builder.Services.AddDistributedMemoryCache();
+
         builder.Services.AddSession(options =>
         {
             options.IdleTimeout = TimeSpan.FromMinutes(20);
@@ -21,13 +35,12 @@ public class Program
             options.Cookie.IsEssential = true;
         });
 
-        // Регистрация AppDbContext
         builder.Services.AddDbContext<AppDbContext>(options =>
             options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
         var app = builder.Build();
 
-        app.UseSession(); // Используем сессии
+        app.UseSession();
 
         app.UseRouting();
         app.UseAuthorization();
@@ -39,4 +52,3 @@ public class Program
         app.Run();
     }
 }
-

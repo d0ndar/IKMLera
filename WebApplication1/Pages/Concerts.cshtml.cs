@@ -8,19 +8,36 @@ using Microsoft.EntityFrameworkCore;
 
 namespace WebApplication1.Pages
 {
+    /// <summary>
+    /// Модель страницы для отображения концертных мероприятий
+    /// </summary>
     public class ConcertsModel : PageModel
     {
         private readonly ILogger<ConcertsModel> _logger;
         private readonly AppDbContext _context;
 
+        /// <summary>
+        /// Конструктор класса ConcertsModel
+        /// </summary>
+        /// <param name="logger">Логгер для записи событий</param>
+        /// <param name="context">Контекст базы данных</param>
         public ConcertsModel(ILogger<ConcertsModel> logger, AppDbContext context)
         {
             _logger = logger;
             _context = context;
         }
 
+        /// <summary>
+        /// Список концертных мероприятий
+        /// </summary>
         public List<Events> ConcertEvents { get; set; }
 
+        /// <summary>
+        /// Обработчик GET-запроса для страницы концертов
+        /// </summary>
+        /// <remarks>
+        /// Загружает все события из категории "Концерты"
+        /// </remarks>
         public async Task OnGetAsync()
         {
             // Получаем идентификатор категории "концерт"
@@ -40,5 +57,3 @@ namespace WebApplication1.Pages
         }
     }
 }
-
-
