@@ -1,0 +1,1031 @@
+﻿@page
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.Extensions.DependencyInjection
+@using WebApplication1.Data
+@inject IServiceProvider ServiceProvider
+@{
+    ViewData["Title"] = "Таблицы Организаторов, Категорий, Локаций";
+
+    ViewData["ShowImage"] = false;
+
+
+
+    var _context = ServiceProvider.GetRequiredService<AppDbContext>();
+
+    var _logger = ServiceProvider.GetRequiredService<ILogger<OtherModel>>();
+
+    var _httpContextAccessor = ServiceProvider.GetRequiredService<IHttpContextAccessor>();
+
+
+
+    var _model = new OtherModel(_logger, _context, _httpContextAccessor);
+
+
+
+    if (_httpContextAccessor.HttpContext.Session.GetString("IsAdmin") != "true")
+
+    {
+
+        _httpContextAccessor.HttpContext.Response.Redirect("/AccessDenied");
+
+        return;
+
+    }
+
+
+
+    //Organizers logic
+
+    if (Request.Method == "POST" && !string.IsNullOrEmpty(Request.Form["handler"]) && Request.Form["handler"] == "ViewTable")
+
+    {
+
+        _model.ShowTable = true;
+
+        await _model.LoadOrganizersAsync();
+
+    }
+
+    if (Request.Method == "POST" && !string.IsNullOrEmpty(Request.Form["handler"]) && Request.Form["handler"] == "AddOrganizer")
+
+    {
+
+        if (string.IsNullOrWhiteSpace(Request.Form["NewOrganizerName"]))
+
+        {
+
+            _model.ShowMessage = true;
+
+            _model.Message = "Имя организатора не может быть пустым.";
+
+            if (_model.ShowTable) await _model.LoadOrganizersAsync();
+
+        }
+
+        else
+
+        {
+
+            var newOrganizer = new Organizers { NameOrganizers = Request.Form["NewOrganizerName"] };
+
+            _context.Organizers.Add(newOrganizer);
+
+            await _context.SaveChangesAsync();
+
+            _model.ShowMessage = true;
+
+            _model.Message = "Организатор добавлен.";
+
+            if (_model.ShowTable) await _model.LoadOrganizersAsync();
+
+        }
+
+    }
+
+    if (Request.Method == "POST" && !string.IsNullOrEmpty(Request.Form["handler"]) && Request.Form["handler"] == "EditOrganizer")
+
+    {
+
+        if (string.IsNullOrWhiteSpace(Request.Form["EditOrganizerName"]))
+
+        {
+
+            _model.ShowMessage = true;
+
+            _model.Message = "Имя организатора не может быть пустым.";
+
+            if (_model.ShowTable) await _model.LoadOrganizersAsync();
+
+        }
+
+        else
+
+        {
+
+            if (!int.TryParse(Request.Form["EditOrganizerId"], out int editOrganizerId))
+
+            {
+
+                _model.ShowMessage = true;
+
+                _model.Message = "Некорректный ID для редактирования.";
+
+                if (_model.ShowTable) await _model.LoadOrganizersAsync();
+
+            }
+
+            else
+
+            {
+
+                var existingOrganizer = await _context.Organizers.FindAsync(editOrganizerId);
+
+                if (existingOrganizer == null)
+
+                {
+
+                    _model.ShowMessage = true;
+
+                    _model.Message = $"Организатор с id {editOrganizerId} не найден.";
+
+                    if (_model.ShowTable) await _model.LoadOrganizersAsync();
+
+                }
+
+                else
+
+                {
+
+                    existingOrganizer.NameOrganizers = Request.Form["EditOrganizerName"];
+
+                    _context.Organizers.Update(existingOrganizer);
+
+                    await _context.SaveChangesAsync();
+
+                    _model.ShowMessage = true;
+
+                    _model.Message = "Организатор обновлен.";
+
+                    if (_model.ShowTable) await _model.LoadOrganizersAsync();
+
+                }
+
+            }
+
+        }
+
+    }
+
+    if (Request.Method == "POST" && !string.IsNullOrEmpty(Request.Form["handler"]) && Request.Form["handler"] == "DeleteOrganizer")
+
+    {
+
+        if (!int.TryParse(Request.Form["DeleteId"], out int deleteId))
+
+        {
+
+            _model.ShowMessage = true;
+
+            _model.Message = "Некорректный ID для удаления.";
+
+            if (_model.ShowTable) await _model.LoadOrganizersAsync();
+
+        }
+
+        else
+
+        {
+
+            var organizerToDelete = await _context.Organizers.FindAsync(deleteId);
+
+            if (organizerToDelete == null)
+
+            {
+
+                _model.ShowMessage = true;
+
+                _model.Message = $"Организатор с ID {deleteId} не найден.";
+
+                if (_model.ShowTable) await _model.LoadOrganizersAsync();
+
+            }
+
+            else
+
+            {
+
+                // Каскадное удаление для организатора
+
+                var eventsToDelete = await _context.Events
+
+                                               .Where(e => e.Sponsor == deleteId)
+
+                                               .ToListAsync();
+
+                _context.Events.RemoveRange(eventsToDelete);
+
+
+
+                _context.Organizers.Remove(organizerToDelete);
+
+                await _context.SaveChangesAsync();
+
+                _model.ShowMessage = true;
+
+                _model.Message = $"Организатор с ID {deleteId} и связанные с ним мероприятия удалены.";
+
+                if (_model.ShowTable) await _model.LoadOrganizersAsync();
+
+            }
+
+        }
+
+    }
+
+
+
+
+
+
+
+    //Category logic
+
+    if (Request.Method == "POST" && !string.IsNullOrEmpty(Request.Form["handler"]) && Request.Form["handler"] == "ViewTableCategory")
+
+    {
+
+        _model.ShowTableCategory = true;
+
+        await LoadCategoriesAsync();
+
+    }
+
+    if (Request.Method == "POST" && !string.IsNullOrEmpty(Request.Form["handler"]) && Request.Form["handler"] == "AddCategory")
+
+    {
+
+        if (string.IsNullOrWhiteSpace(Request.Form["NewCategoryName"]))
+
+        {
+
+            _model.ShowMessageCategory = true;
+
+            _model.MessageCategory = "Имя категории не может быть пустым.";
+
+            if (_model.ShowTableCategory) await LoadCategoriesAsync();
+
+        }
+
+        else
+
+        {
+
+            var newCategoryName = Request.Form["NewCategoryName"].ToString();
+
+            if (await _context.Category.AnyAsync(c => c.NameCategory == newCategoryName))
+
+            {
+
+                _model.ShowMessageCategory = true;
+
+                _model.MessageCategory = "Такая категория уже существует.";
+
+                if (_model.ShowTableCategory) await LoadCategoriesAsync();
+
+            }
+
+            else
+
+            {
+
+                var newCategory = new Category { NameCategory = newCategoryName };
+
+                _context.Category.Add(newCategory);
+
+                await _context.SaveChangesAsync();
+
+                _model.ShowMessageCategory = true;
+
+                _model.MessageCategory = "Категория добавлена.";
+
+                if (_model.ShowTableCategory) await LoadCategoriesAsync();
+
+            }
+
+        }
+
+    }
+
+    if (Request.Method == "POST" && !string.IsNullOrEmpty(Request.Form["handler"]) && Request.Form["handler"] == "EditCategory")
+
+    {
+
+        if (string.IsNullOrWhiteSpace(Request.Form["EditCategoryName"]))
+
+        {
+
+            _model.ShowMessageCategory = true;
+
+            _model.MessageCategory = "Имя категории не может быть пустым.";
+
+            if (_model.ShowTableCategory) await LoadCategoriesAsync();
+
+        }
+
+        else
+
+        {
+
+            if (!int.TryParse(Request.Form["EditCategoryId"], out int editCategoryId))
+
+            {
+
+                _model.ShowMessageCategory = true;
+
+                _model.MessageCategory = "Некорректный ID для редактирования.";
+
+                if (_model.ShowTableCategory) await LoadCategoriesAsync();
+
+            }
+
+            else
+
+            {
+
+                var existingCategory = await _context.Category.FindAsync(editCategoryId);
+
+                if (existingCategory == null)
+
+                {
+
+                    _model.ShowMessageCategory = true;
+
+                    _model.MessageCategory = $"Категория с id {editCategoryId} не найдена.";
+
+                    if (_model.ShowTableCategory) await LoadCategoriesAsync();
+
+                }
+
+                else
+
+                {
+
+                    existingCategory.NameCategory = Request.Form["EditCategoryName"];
+
+                    _context.Category.Update(existingCategory);
+
+                    await _context.SaveChangesAsync();
+
+                    _model.ShowMessageCategory = true;
+
+                    _model.MessageCategory = "Категория обновлена.";
+
+                    if (_model.ShowTableCategory) await LoadCategoriesAsync();
+
+                }
+
+            }
+
+        }
+
+    }
+
+    // ** Вариант 3: DeleteBehavior.Restrict **
+    
+    if (Request.Method == "POST" && !string.IsNullOrEmpty(Request.Form["handler"]) && Request.Form["handler"] == "DeleteCategory")
+
+    {
+
+        if (!int.TryParse(Request.Form["DeleteCategoryId"], out int deleteCategoryId))
+
+        {
+
+            _model.ShowMessageCategory = true;
+
+            _model.MessageCategory = "Некорректный ID для удаления.";
+
+            if (_model.ShowTableCategory) await LoadCategoriesAsync();
+
+        }
+
+        else
+
+        {
+
+            var categoryToDelete = await _context.Category.FindAsync(deleteCategoryId);
+
+            if (categoryToDelete == null)
+
+            {
+
+                _model.ShowMessageCategory = true;
+
+                _model.MessageCategory = $"Категория с ID {deleteCategoryId} не найдена.";
+
+                if (_model.ShowTableCategory) await LoadCategoriesAsync();
+
+            }
+            else
+            {
+                try
+
+                {
+                    _context.Category.Remove(categoryToDelete);
+
+                    await _context.SaveChangesAsync();
+
+
+
+                    _model.ShowMessageCategory = true;
+
+                    _model.MessageCategory = $"Категория с ID {deleteCategoryId} удалена.";
+
+                    if (_model.ShowTableCategory) await LoadCategoriesAsync();
+
+                }
+
+                catch (DbUpdateException ex)
+
+                {
+
+                    _model.ShowMessageCategory = true;
+
+                    _model.MessageCategory = $"Невозможно удалить категорию с ID {deleteCategoryId}, т.к. на нее есть ссылки. Сначала удалите все связанные события.";
+
+                    if (_model.ShowTableCategory) await LoadCategoriesAsync();
+
+                }
+
+            }
+
+        }
+
+    } 
+
+
+    //Location Events logic
+
+    if (Request.Method == "POST" && !string.IsNullOrEmpty(Request.Form["handler"]) && Request.Form["handler"] == "ViewTableLocation")
+
+    {
+
+        _model.ShowTableLocation = true;
+
+        await LoadLocationsAsync();
+
+    }
+
+    if (Request.Method == "POST" && !string.IsNullOrEmpty(Request.Form["handler"]) && Request.Form["handler"] == "AddLocation")
+
+    {
+
+        if (string.IsNullOrWhiteSpace(Request.Form["NewLocationName"]))
+
+        {
+
+            _model.ShowMessageLocation = true;
+
+            _model.MessageLocation = "Имя места не может быть пустым.";
+
+            if (_model.ShowTableLocation) await LoadLocationsAsync();
+
+        }
+
+        else if (string.IsNullOrWhiteSpace(Request.Form["NewLocationAddress"]))
+
+        {
+
+            _model.ShowMessageLocation = true;
+
+            _model.MessageLocation = "Адрес места не может быть пустым.";
+
+            if (_model.ShowTableLocation) await LoadLocationsAsync();
+
+        }
+
+        else
+
+        {
+
+            var newLocationName = Request.Form["NewLocationName"].ToString();
+
+            if (await _context.LocationEvents.AnyAsync(c => c.NameLocation == newLocationName))
+
+            {
+
+                _model.ShowMessageLocation = true;
+
+                _model.MessageLocation = "Такое место уже существует.";
+
+                if (_model.ShowTableLocation) await LoadLocationsAsync();
+
+            }
+
+            else
+
+            {
+
+                var newLocation = new LocationEvent
+                        {
+                            NameLocation = newLocationName,
+                            Address = Request.Form["NewLocationAddress"]
+                        };
+
+
+
+                _context.LocationEvents.Add(newLocation);
+
+                await _context.SaveChangesAsync();
+
+
+
+                _model.ShowMessageLocation = true;
+
+                _model.MessageLocation = "Место добавлено.";
+
+                if (_model.ShowTableLocation) await LoadLocationsAsync();
+
+            }
+
+        }
+
+    }
+
+
+
+    if (Request.Method == "POST" && !string.IsNullOrEmpty(Request.Form["handler"]) && Request.Form["handler"] == "EditLocation")
+
+    {
+
+        if (string.IsNullOrWhiteSpace(Request.Form["EditLocationName"]))
+
+        {
+
+            _model.ShowMessageLocation = true;
+
+            _model.MessageLocation = "Имя места не может быть пустым.";
+
+            if (_model.ShowTableLocation) await LoadLocationsAsync();
+
+        }
+
+        else if (string.IsNullOrWhiteSpace(Request.Form["EditLocationAddress"]))
+
+        {
+
+            _model.ShowMessageLocation = true;
+
+            _model.MessageLocation = "Адрес места не может быть пустым.";
+
+            if (_model.ShowTableLocation) await LoadLocationsAsync();
+
+        }
+
+        else
+
+        {
+
+            if (!int.TryParse(Request.Form["EditLocationId"], out int editLocationId))
+
+            {
+
+                _model.ShowMessageLocation = true;
+
+                _model.MessageLocation = "Некорректный ID для редактирования.";
+
+                if (_model.ShowTableLocation) await LoadLocationsAsync();
+
+            }
+
+            else
+
+            {
+
+                var existingLocation = await _context.LocationEvents.FindAsync(editLocationId);
+
+                if (existingLocation == null)
+
+                {
+
+                    _model.ShowMessageLocation = true;
+
+                    _model.MessageLocation = $"Место с id {editLocationId} не найдено.";
+
+                    if (_model.ShowTableLocation) await LoadLocationsAsync();
+
+                }
+
+                else
+
+                {
+
+                    existingLocation.NameLocation = Request.Form["EditLocationName"];
+
+                    existingLocation.Address = Request.Form["EditLocationAddress"];
+
+                    _context.LocationEvents.Update(existingLocation);
+
+                    await _context.SaveChangesAsync();
+
+                    _model.ShowMessageLocation = true;
+
+                    _model.MessageLocation = "Место обновлено.";
+
+                    if (_model.ShowTableLocation) await LoadLocationsAsync();
+
+                }
+
+            }
+
+        }
+
+    }
+
+
+
+    if (Request.Method == "POST" && !string.IsNullOrEmpty(Request.Form["handler"]) && Request.Form["handler"] == "DeleteLocation")
+
+    {
+
+        if (!int.TryParse(Request.Form["DeleteLocationId"], out int deleteLocationId))
+
+        {
+
+            _model.ShowMessageLocation = true;
+
+            _model.MessageLocation = "Некорректный ID для удаления.";
+
+            if (_model.ShowTableLocation) await LoadLocationsAsync();
+
+        }
+
+        else
+
+        {
+
+            var locationToDelete = await _context.LocationEvents.FindAsync(deleteLocationId);
+
+            if (locationToDelete == null)
+
+            {
+
+                _model.ShowMessageLocation = true;
+
+                _model.MessageLocation = $"Место с ID {deleteLocationId} не найдено.";
+
+                if (_model.ShowTableLocation) await LoadLocationsAsync();
+
+            }
+
+            else
+
+            {
+
+                // Каскадное удаление для места
+
+                var eventsToDelete = await _context.Events
+
+                                            .Where(e => e.Location == deleteLocationId)
+
+                                            .ToListAsync();
+
+                _context.Events.RemoveRange(eventsToDelete);
+
+
+
+                _context.LocationEvents.Remove(locationToDelete);
+
+                await _context.SaveChangesAsync();
+
+                _model.ShowMessageLocation = true;
+
+                _model.MessageLocation = $"Место с ID {deleteLocationId} и связанные с ним мероприятия удалены.";
+
+                if (_model.ShowTableLocation) await LoadLocationsAsync();
+
+            }
+
+        }
+
+    }
+
+
+
+
+
+    if (_model.OrganizersList == null && _model.ShowTable)
+
+    {
+
+        await _model.LoadOrganizersAsync();
+
+    }
+
+    if (_model.CategoryList == null && _model.ShowTableCategory)
+
+    {
+
+        await LoadCategoriesAsync();
+
+    }
+
+    if (_model.LocationList == null && _model.ShowTableLocation)
+
+    {
+
+        await LoadLocationsAsync();
+
+    }
+
+
+
+    async Task LoadCategoriesAsync()
+
+    {
+
+        _model.CategoryList = await _context.Category.ToListAsync();
+
+    }
+
+    async Task LoadLocationsAsync()
+
+    {
+
+        _model.LocationList = await _context.LocationEvents.ToListAsync();
+
+    }
+}
+<h1>@ViewData["Title"]</h1>
+@*Organizers*@
+<form method="post">
+    <input type="hidden" name="handler" value="ViewTable" />
+    <button type="submit" class="btn btn-primary">Просмотреть таблицу организаторов</button>
+</form>
+<br />
+
+@if (_model.ShowTable)
+
+
+
+{
+    @if (_model.OrganizersList != null && _model.OrganizersList.Any())
+
+
+
+    {
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Имя организатора</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in _model.OrganizersList)
+
+
+
+                {
+                    <tr>
+                        <td>@item.Id</td>
+                        <td>@item.NameOrganizers</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+
+
+    else
+
+
+
+    {
+        <p>Нет данных об организаторах.</p>
+    }
+}
+
+@if (_model.ShowMessage)
+
+
+
+{
+    <div class="alert alert-info">
+        @_model.Message
+    </div>
+}
+<br />
+
+<h2>Добавить организатора</h2>
+<form method="post">
+    <input type="hidden" name="handler" value="AddOrganizer" />
+    <div class="form-group">
+        <label for="NewOrganizerName">Имя:</label>
+        <input type="text" name="NewOrganizerName" class="form-control" required />
+    </div>
+    <button type="submit" class="btn btn-success">Добавить</button>
+</form>
+<br />
+
+<h2>Редактировать организатора</h2>
+<form method="post">
+    <input type="hidden" name="handler" value="EditOrganizer" />
+    <div class="form-group">
+        <label for="EditOrganizerId">Id:</label>
+        <input type="number" name="EditOrganizerId" class="form-control" required />
+        <label for="EditOrganizerName">Имя:</label>
+        <input type="text" name="EditOrganizerName" class="form-control" required />
+    </div>
+    <button type="submit" class="btn btn-warning">Редактировать</button>
+</form>
+<br />
+
+<h2>Удалить организатора</h2>
+<form method="post">
+    <input type="hidden" name="handler" value="DeleteOrganizer" />
+    <div class="form-group">
+        <label for="DeleteId">Id:</label>
+        <input type="number" name="DeleteId" class="form-control" required />
+    </div>
+    <button type="submit" class="btn btn-danger">Удалить</button>
+</form>
+
+<br />
+@*Category*@
+<form method="post">
+    <input type="hidden" name="handler" value="ViewTableCategory" />
+    <button type="submit" class="btn btn-primary">Просмотреть таблицу категорий</button>
+</form>
+<br />
+
+@if (_model.ShowTableCategory)
+
+
+
+{
+    @if (_model.CategoryList != null && _model.CategoryList.Any())
+
+
+
+    {
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Имя категории</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in _model.CategoryList)
+
+
+
+                {
+                    <tr>
+                        <td>@item.Id</td>
+                        <td>@item.NameCategory</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+
+
+    else
+
+
+
+    {
+        <p>Нет данных о категориях.</p>
+    }
+}
+
+@if (_model.ShowMessageCategory)
+
+
+
+{
+    <div class="alert alert-info">
+        @_model.MessageCategory
+    </div>
+}
+<br />
+
+<h2>Добавить категорию</h2>
+<form method="post">
+    <input type="hidden" name="handler" value="AddCategory" />
+    <div class="form-group">
+        <label for="NewCategoryName">Имя:</label>
+        <input type="text" name="NewCategoryName" class="form-control" required />
+    </div>
+    <button type="submit" class="btn btn-success">Добавить</button>
+</form>
+<br />
+
+<h2>Редактировать категорию</h2>
+<form method="post">
+    <input type="hidden" name="handler" value="EditCategory" />
+    <div class="form-group">
+        <label for="EditCategoryId">Id:</label>
+        <input type="number" name="EditCategoryId" class="form-control" required />
+        <label for="EditCategoryName">Имя:</label>
+        <input type="text" name="EditCategoryName" class="form-control" required />
+    </div>
+    <button type="submit" class="btn btn-warning">Редактировать</button>
+</form>
+<br />
+
+<h2>Удалить категорию</h2>
+<form method="post">
+    <input type="hidden" name="handler" value="DeleteCategory" />
+    <div class="form-group">
+        <label for="DeleteCategoryId">Id:</label>
+        <input type="number" name="DeleteCategoryId" class="form-control" required />
+    </div>
+    <button type="submit" class="btn btn-danger">Удалить</button>
+</form>
+
+
+<br />
+@*Location*@
+<form method="post">
+    <input type="hidden" name="handler" value="ViewTableLocation" />
+    <button type="submit" class="btn btn-primary">Просмотреть таблицу мест проведения</button>
+</form>
+<br />
+
+@if (_model.ShowTableLocation)
+
+
+
+{
+    @if (_model.LocationList != null && _model.LocationList.Any())
+
+
+
+    {
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Название места</th>
+                    <th>Адрес</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in _model.LocationList)
+
+
+
+                {
+                    <tr>
+                        <td>@item.Id</td>
+                        <td>@item.NameLocation</td>
+                        <td>@item.Address</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+
+
+    else
+
+
+
+    {
+        <p>Нет данных о местах проведения.</p>
+    }
+}
+
+@if (_model.ShowMessageLocation)
+
+
+
+{
+    <div class="alert alert-info">
+        @_model.MessageLocation
+    </div>
+}
+<br />
+
+<h2>Добавить место проведения</h2>
+<form method="post">
+    <input type="hidden" name="handler" value="AddLocation" />
+    <div class="form-group">
+        <label for="NewLocationName">Название:</label>
+        <input type="text" name="NewLocationName" class="form-control" required />
+        <label for="NewLocationAddress">Адрес:</label>
+        <input type="text" name="NewLocationAddress" class="form-control" required />
+    </div>
+    <button type="submit" class="btn btn-success">Добавить</button>
+</form>
+<br />
+
+<h2>Редактировать место проведения</h2>
+<form method="post">
+    <input type="hidden" name="handler" value="EditLocation" />
+    <div class="form-group">
+        <label for="EditLocationId">Id:</label>
+        <input type="number" name="EditLocationId" class="form-control" required />
+        <label for="EditLocationName">Название:</label>
+        <input type="text" name="EditLocationName" class="form-control" required />
+        <label for="EditLocationAddress">Адрес:</label>
+        <input type="text" name="EditLocationAddress" class="form-control" required />
+    </div>
+    <button type="submit" class="btn btn-warning">Редактировать</button>
+</form>
+<br />
+
+<h2>Удалить место проведения</h2>
+<form method="post">
+    <input type="hidden" name="handler" value="DeleteLocation" />
+    <div class="form-group">
+        <label for="DeleteLocationId">Id:</label>
+        <input type="number" name="DeleteLocationId" class="form-control" required />
+    </div>
+    <button type="submit" class="btn btn-danger">Удалить</button>
+</form>

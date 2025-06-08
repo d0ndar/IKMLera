@@ -1,0 +1,38 @@
+﻿@page
+@model WebApplication1.Pages.TheatreModel
+@{
+    ViewData["Title"] = "Театр";
+    ViewData["ShowImage"] = false;
+}
+
+<h1>@ViewData["Title"]</h1>
+
+@if (Model.TheatreEvents != null && Model.TheatreEvents.Any())
+{
+    <table class="table">
+        <thead>
+        <tr>
+            <th>Название</th>
+            <th>Описание</th>
+            <th>Дата</th>
+            <th>Цена</th>
+        </tr>
+        </thead>
+        <tbody>
+        @foreach (var item in Model.TheatreEvents)
+        {
+            <tr>
+                <td>@item.Title</td>
+                <td>@item.Description</td>
+                <td>@item.DateEvent.ToString("dd.MM.yyyy HH:mm")</td>
+                <td>@item.TicketPrice</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+else
+{
+    <p>Нет театральных представлений в базе данных.</p>
+}
+

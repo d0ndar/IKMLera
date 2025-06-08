@@ -1,0 +1,356 @@
+﻿@page
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.Extensions.DependencyInjection
+@using WebApplication1.Data
+@inject IServiceProvider ServiceProvider
+@{
+    ViewData["Title"] = "Управление событиями";
+
+    ViewData["ShowImage"] = false;
+
+    var _context = ServiceProvider.GetRequiredService<AppDbContext>();
+    var _logger = ServiceProvider.GetRequiredService<ILogger<EventsAdminModel>>();
+    var _httpContextAccessor = ServiceProvider.GetRequiredService<IHttpContextAccessor>();
+
+    if (_httpContextAccessor.HttpContext.Session.GetString("IsAdmin") != "true")
+    {
+        _httpContextAccessor.HttpContext.Response.Redirect("/AccessDenied");
+        return;
+    }
+
+    var _model = new EventsAdminModel(_logger, _context, _httpContextAccessor);
+
+    // Events logic
+    if (Request.Method == "POST" && !string.IsNullOrEmpty(Request.Form["handler"]) && Request.Form["handler"] == "ViewTableEvents")
+    {
+        _model.ShowTableEvents = true;
+        await _model.LoadEventsAsync();
+    }
+
+    if (Request.Method == "POST" && !string.IsNullOrEmpty(Request.Form["handler"]) && Request.Form["handler"] == "AddEvent")
+    {
+        if (string.IsNullOrWhiteSpace(Request.Form["NewEventTitle"]) ||
+            string.IsNullOrWhiteSpace(Request.Form["NewEventDescription"]) ||
+            !DateTime.TryParse(Request.Form["NewEventDate"], out DateTime newDate) ||
+            !int.TryParse(Request.Form["NewEventLocation"], out int newLocation) ||
+            !int.TryParse(Request.Form["NewEventCapacity"], out int newCapacity) ||
+            !int.TryParse(Request.Form["NewEventPrice"], out int newPrice) ||
+            !int.TryParse(Request.Form["NewEventCategory"], out int newCategory) ||
+            !int.TryParse(Request.Form["NewEventSponsor"], out int newSponsor))
+        {
+            _model.ShowMessageEvents = true;
+            _model.MessageEvents = "Пожалуйста, заполните все поля корректно.";
+            if (_model.ShowTableEvents) await _model.LoadEventsAsync();
+        }
+        else
+        {
+            var newEventTitle = Request.Form["NewEventTitle"].ToString();
+            var newEventDescription = Request.Form["NewEventDescription"].ToString();
+
+            if (await _context.Events.AnyAsync(e => e.Title == newEventTitle))
+            {
+                _model.ShowMessageEvents = true;
+                _model.MessageEvents = "Событие с таким названием уже существует.";
+                if (_model.ShowTableEvents) await _model.LoadEventsAsync();
+            }
+            else if (await _context.Events.AnyAsync(e => e.Description == newEventDescription))
+            {
+                _model.ShowMessageEvents = true;
+                _model.MessageEvents = "Событие с таким описанием уже существует.";
+                if (_model.ShowTableEvents) await _model.LoadEventsAsync();
+            }
+            else
+            {
+                var newEvent = new Events
+                        {
+                            Title = newEventTitle,
+                            Description = newEventDescription,
+                            DateEvent = DateTime.SpecifyKind(newDate, DateTimeKind.Utc), // Используем SpecifyKind
+                            Location = newLocation,
+                            Capacity = newCapacity,
+                            TicketPrice = newPrice,
+                            Category = newCategory,
+                            Sponsor = newSponsor
+                        };
+
+                _context.Events.Add(newEvent);
+                await _context.SaveChangesAsync();
+
+                _model.ShowMessageEvents = true;
+                _model.MessageEvents = "Событие добавлено.";
+                if (_model.ShowTableEvents) await _model.LoadEventsAsync();
+            }
+        }
+    }
+
+    if (Request.Method == "POST" && !string.IsNullOrEmpty(Request.Form["handler"]) && Request.Form["handler"] == "EditEvent")
+    {
+        if (string.IsNullOrWhiteSpace(Request.Form["EditEventTitle"]) ||
+            string.IsNullOrWhiteSpace(Request.Form["EditEventDescription"]) ||
+            !DateTime.TryParse(Request.Form["EditEventDate"], out DateTime editDate) ||
+            !int.TryParse(Request.Form["EditEventLocation"], out int editLocation) ||
+            !int.TryParse(Request.Form["EditEventCapacity"], out int editCapacity) ||
+            !int.TryParse(Request.Form["EditEventPrice"], out int editPrice) ||
+            !int.TryParse(Request.Form["EditEventCategory"], out int editCategory) ||
+            !int.TryParse(Request.Form["EditEventSponsor"], out int editSponsor))
+        {
+            _model.ShowMessageEvents = true;
+            _model.MessageEvents = "Пожалуйста, заполните все поля корректно для редактирования.";
+            if (_model.ShowTableEvents) await _model.LoadEventsAsync();
+        }
+        else
+        {
+            if (!int.TryParse(Request.Form["EditEventId"], out int editEventId))
+            {
+                _model.ShowMessageEvents = true;
+                _model.MessageEvents = "Некорректный ID для редактирования.";
+                if (_model.ShowTableEvents) await _model.LoadEventsAsync();
+            }
+            else
+            {
+                var existingEvent = await _context.Events.FindAsync(editEventId);
+                if (existingEvent == null)
+                {
+                    _model.ShowMessageEvents = true;
+                    _model.MessageEvents = $"Событие с id {editEventId} не найдено.";
+                    if (_model.ShowTableEvents) await _model.LoadEventsAsync();
+                }
+                else
+                {
+                    existingEvent.Title = Request.Form["EditEventTitle"];
+                    existingEvent.Description = Request.Form["EditEventDescription"];
+                    existingEvent.DateEvent = DateTime.SpecifyKind(editDate, DateTimeKind.Utc); // Используем SpecifyKind
+                    existingEvent.Location = editLocation;
+                    existingEvent.Capacity = editCapacity;
+                    existingEvent.TicketPrice = editPrice;
+                    existingEvent.Category = editCategory;
+                    existingEvent.Sponsor = editSponsor;
+
+                    _context.Events.Update(existingEvent);
+                    await _context.SaveChangesAsync();
+
+                    _model.ShowMessageEvents = true;
+                    _model.MessageEvents = "Событие обновлено.";
+                    if (_model.ShowTableEvents) await _model.LoadEventsAsync();
+                }
+            }
+
+        }
+    }
+
+    if (Request.Method == "POST" && !string.IsNullOrEmpty(Request.Form["handler"]) && Request.Form["handler"] == "DeleteEvent")
+    {
+        if (!int.TryParse(Request.Form["DeleteEventId"], out int deleteEventId))
+        {
+            _model.ShowMessageEvents = true;
+            _model.MessageEvents = "Некорректный ID для удаления.";
+            if (_model.ShowTableEvents) await _model.LoadEventsAsync();
+        }
+        else
+        {
+            var eventToDelete = await _context.Events.FindAsync(deleteEventId);
+            if (eventToDelete == null)
+            {
+                _model.ShowMessageEvents = true;
+                _model.MessageEvents = $"Событие с ID {deleteEventId} не найдено.";
+                if (_model.ShowTableEvents) await _model.LoadEventsAsync();
+            }
+            else
+            {
+                _context.Events.Remove(eventToDelete);
+                await _context.SaveChangesAsync();
+                _model.ShowMessageEvents = true;
+                _model.MessageEvents = $"Событие с ID {deleteEventId} удалено.";
+                if (_model.ShowTableEvents) await _model.LoadEventsAsync();
+            }
+        }
+    }
+
+    if (_model.EventsList == null && _model.ShowTableEvents)
+    {
+        await _model.LoadEventsAsync();
+    }
+}
+
+<h1>@ViewData["Title"]</h1>
+
+<form method="post">
+    <input type="hidden" name="handler" value="ViewTableEvents" />
+    <button type="submit" class="btn btn-primary">Просмотреть таблицу событий</button>
+</form>
+<br />
+
+@if (_model.ShowTableEvents)
+{
+    @if (_model.EventsList != null && _model.EventsList.Any())
+    {
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Название</th>
+                    <th>Описание</th>
+                    <th>Дата</th>
+                    <th>Место</th>
+                    <th>Вместимость</th>
+                    <th>Цена билета</th>
+                    <th>Категория</th>
+                    <th>Спонсор</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in _model.EventsList)
+                {
+                    <tr>
+                        <td>@item.Id</td>
+                        <td>@item.Title</td>
+                        <td>@item.Description</td>
+                        <td>@item.DateEvent</td>
+                        <td>@item.Location</td>
+                        <td>@item.Capacity</td>
+                        <td>@item.TicketPrice</td>
+                        <td>@item.Category</td>
+                        <td>@item.Sponsor</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    else
+    {
+        <p>Нет данных о событиях.</p>
+    }
+}
+
+@if (_model.ShowMessageEvents)
+{
+    <div class="alert alert-info">
+        @_model.MessageEvents
+    </div>
+}
+<br />
+
+<h2>Добавить событие</h2>
+<form method="post">
+    <input type="hidden" name="handler" value="AddEvent" />
+    <div class="form-group">
+        <label for="NewEventTitle">Название:</label>
+        <input type="text" name="NewEventTitle" class="form-control" required />
+    </div>
+    <div class="form-group">
+        <label for="NewEventDescription">Описание:</label>
+        <input type="text" name="NewEventDescription" class="form-control" required />
+    </div>
+    <div class="form-group">
+    <p>Дату записывать в формате: гггг-мм-ддТчч:мм</p>
+        <label for="NewEventDate">Дата:</label>
+        <input type="datetime" name="NewEventDate" class="form-control" required pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}" />
+    </div>
+    <div class="form-group">
+        <label for="NewEventLocation">Место:</label>
+        <select name="NewEventLocation" class="form-control" required>
+            @foreach (var location in _context.LocationEvents)
+            {
+                <option value="@location.Id">@location.NameLocation</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label for="NewEventCapacity">Вместимость:</label>
+        <input type="number" name="NewEventCapacity" class="form-control" required />
+    </div>
+    <div class="form-group">
+        <label for="NewEventPrice">Цена билета:</label>
+        <input type="number" name="NewEventPrice" class="form-control" required />
+    </div>
+    <div class="form-group">
+        <label for="NewEventCategory">Категория:</label>
+        <select name="NewEventCategory" class="form-control" required>
+            @foreach (var category in _context.Category)
+            {
+                <option value="@category.Id">@category.NameCategory</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label for="NewEventSponsor">Спонсор:</label>
+        <select name="NewEventSponsor" class="form-control" required>
+            @foreach (var sponsor in _context.Organizers)
+            {
+                <option value="@sponsor.Id">@sponsor.NameOrganizers</option>
+            }
+        </select>
+    </div>
+    <button type="submit" class="btn btn-success">Добавить</button>
+</form>
+<br />
+
+<h2>Редактировать событие</h2>
+<form method="post">
+    <input type="hidden" name="handler" value="EditEvent" />
+    <div class="form-group">
+        <label for="EditEventId">Id:</label>
+        <input type="number" name="EditEventId" class="form-control" required />
+    </div>
+    <div class="form-group">
+        <label for="EditEventTitle">Название:</label>
+        <input type="text" name="EditEventTitle" class="form-control" required />
+    </div>
+    <div class="form-group">
+        <label for="EditEventDescription">Описание:</label>
+        <input type="text" name="EditEventDescription" class="form-control" required />
+    </div>
+    <div class="form-group">
+        <p>Дату записывать в формате: гггг-мм-ддТчч:мм</p>
+        <label for="EditEventDate">Дата:</label>
+        <input type="datetime" name="EditEventDate" class="form-control" required pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}" />
+    </div>
+    <div class="form-group">
+        <label for="EditEventLocation">Место:</label>
+        <select name="EditEventLocation" class="form-control" required>
+            @foreach (var location in _context.LocationEvents)
+            {
+                <option value="@location.Id">@location.NameLocation</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label for="EditEventCapacity">Вместимость:</label>
+        <input type="number" name="EditEventCapacity" class="form-control" required />
+    </div>
+    <div class="form-group">
+        <label for="EditEventPrice">Цена билета:</label>
+        <input type="number" name="EditEventPrice" class="form-control" required />
+    </div>
+    <div class="form-group">
+        <label for="EditEventCategory">Категория:</label>
+        <select name="EditEventCategory" class="form-control" required>
+            @foreach (var category in _context.Category)
+            {
+                <option value="@category.Id">@category.NameCategory</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label for="EditEventSponsor">Спонсор:</label>
+        <select name="EditEventSponsor" class="form-control" required>
+            @foreach (var sponsor in _context.Organizers)
+            {
+                <option value="@sponsor.Id">@sponsor.NameOrganizers</option>
+            }
+        </select>
+    </div>
+    <button type="submit" class="btn btn-warning">Редактировать</button>
+</form>
+<br />
+
+<h2>Удалить событие</h2>
+<form method="post">
+    <input type="hidden" name="handler" value="DeleteEvent" />
+    <div class="form-group">
+        <label for="DeleteEventId">Id:</label>
+        <input type="number" name="DeleteEventId" class="form-control" required />
+    </div>
+    <button type="submit" class="btn btn-danger">Удалить</button>
+</form>
+
